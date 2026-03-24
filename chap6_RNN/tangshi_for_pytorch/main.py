@@ -4,7 +4,7 @@ import torch
 from torch.autograd import Variable
 import torch.optim as optim
 
-import rnn
+import rnn as rnn_lstm
 
 start_token = 'G'
 end_token = 'E'
@@ -118,22 +118,24 @@ def generate_batch(batch_size, poems_vec, word_to_int):
         y_batches.append(y_data)
     return x_batches, y_batches
 
-
 def run_training():
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Using device:", device)
     # 处理数据集
     # poems_vector, word_to_int, vocabularies = process_poems2('./tangshi.txt')
     poems_vector, word_to_int, vocabularies = process_poems1('./poems.txt')
     # 生成batch
-    print("finish  loadding data")
+    print("finish loading data")
     BATCH_SIZE = 100
 
     torch.manual_seed(5)
-    word_embedding = rnn_lstm.word_embedding( vocab_length= len(word_to_int) + 1 , embedding_dim= 100)
-    rnn_model = rnn_lstm.RNN_model(batch_sz = BATCH_SIZE,vocab_len = len(word_to_int) + 1 ,word_embedding = word_embedding ,embedding_dim= 100, lstm_hidden_dim=128)
+    word_embedding = rnn_lstm.word_embedding(vocab_length=len(word_to_int) + 1, embedding_dim=100)
+    rnn_model = rnn_lstm.RNN_model(batch_sz=BATCH_SIZE, vocab_len=len(word_to_int) + 1,
+                                    word_embedding=word_embedding, embedding_dim=100, lstm_hidden_dim=128)
+    rnn_model = rnn_model.to(device)
 
     # optimizer = optim.Adam(rnn_model.parameters(), lr= 0.001)
-    optimizer=optim.RMSprop(rnn_model.parameters(), lr=0.01)
-
+    optimizer = optim.RMSprop(rnn_model.parameters(), lr=0.01)
     loss_fun = torch.nn.NLLLoss()
     # rnn_model.load_state_dict(torch.load('./poem_generator_rnn'))  # if you have already trained your model you can load it by this line.
 
@@ -142,33 +144,32 @@ def run_training():
         n_chunk = len(batches_inputs)
         for batch in range(n_chunk):
             batch_x = batches_inputs[batch]
-            batch_y = batches_outputs[batch] # (batch , time_step)
+            batch_y = batches_outputs[batch]
 
             loss = 0
             for index in range(BATCH_SIZE):
-                x = np.array(batch_x[index], dtype = np.int64)
-                y = np.array(batch_y[index], dtype = np.int64)
-                x = Variable(torch.from_numpy(np.expand_dims(x,axis=1)))
-                y = Variable(torch.from_numpy(y ))
+                x = np.array(batch_x[index], dtype=np.int64)
+                y = np.array(batch_y[index], dtype=np.int64)
+                x = Variable(torch.from_numpy(np.expand_dims(x, axis=1)))
+                y = Variable(torch.from_numpy(y))
+                x, y = x.to(device), y.to(device)   # 移动到 GPU
                 pre = rnn_model(x)
-                loss += loss_fun(pre , y)
+                loss += loss_fun(pre, y)
                 if index == 0:
                     _, pre = torch.max(pre, dim=1)
                     print('prediction', pre.data.tolist()) # the following  three line can print the output and the prediction
                     print('b_y       ', y.data.tolist())   # And you need to take a screenshot and then past is to your homework paper.
                     print('*' * 30)
-            loss  = loss  / BATCH_SIZE
-            print("epoch  ",epoch,'batch number',batch,"loss is: ", loss.data.tolist())
+            loss = loss / BATCH_SIZE
+            print("epoch ", epoch, 'batch number', batch, "loss is: ", loss.data.tolist())
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm(rnn_model.parameters(), 1)
+            torch.nn.utils.clip_grad_norm_(rnn_model.parameters(), 1)
             optimizer.step()
 
-            if batch % 20 ==0:
+            if batch % 20 == 0:
                 torch.save(rnn_model.state_dict(), './poem_generator_rnn')
-                print("finish  save model")
-
-
+                print("finish save model")
 
 def to_word(predict, vocabs):  # 预测的结果转化成汉字
     sample = np.argmax(predict)
@@ -218,15 +219,21 @@ def gen_poem(begin_word):
 
 
 
-run_training()  # 如果不是训练阶段 ，请注销这一行 。 网络训练时间很长。
+# run_training()  # 如果不是训练阶段 ，请注销这一行 。 网络训练时间很长。
 
+print("==================原始模型输出==================")
+print(gen_poem("日"))
+print(gen_poem("红"))
+print(gen_poem("山"))
+print(gen_poem("夜"))
+print(gen_poem("湖"))
+print(gen_poem("君"))
 
+print("\n==================美化输出后的古诗==================")
 pretty_print_poem(gen_poem("日"))
 pretty_print_poem(gen_poem("红"))
 pretty_print_poem(gen_poem("山"))
 pretty_print_poem(gen_poem("夜"))
-pretty_print_poem(gen_poem("湖"))
-pretty_print_poem(gen_poem("湖"))
 pretty_print_poem(gen_poem("湖"))
 pretty_print_poem(gen_poem("君"))
 
